@@ -1144,6 +1144,43 @@ class Flake:
                 description=f"Attribute '{e.args[0]}' not found in flake",
             ) from e
 
+    def machine_system(self, machine_name: str) -> str:
+        """Get the target system for a specific machine.
+
+        Args:
+            machine_name: The name of the machine
+
+        Returns:
+            The target system (e.g., "x86_64-linux", "aarch64-darwin")
+
+        """
+        # Determine machine's target system, not current host system
+        try:
+            # Try to get machineClass from inventory
+            machine_class = self.select(
+                f'clanInternals.inventoryClass.inventory.machines."{machine_name}".machineClass'
+            )
+        except ClanSelectError:
+            # Fallback: assume nixos if not in inventory
+            machine_class = "nixos"
+
+        # Query the machine's actual target system from its configuration
+        try:
+            if machine_class == "darwin":
+                system = self.select(
+                    f'darwinConfigurations."{machine_name}".pkgs.hostPlatform.system'
+                )
+            else:  # nixos
+                system = self.select(
+                    f'nixosConfigurations."{machine_name}".pkgs.hostPlatform.system'
+                )
+        except ClanSelectError:
+            # Ultimate fallback: use current host system (old behavior)
+            config = nix_config()
+            system = config["system"]
+
+        return system
+
     def machine_selector(self, machine_name: str, selector: str) -> str:
         """Create a selector for a specific machine.
 
@@ -1154,8 +1191,7 @@ class Flake:
             The full selector string for the machine
 
         """
-        config = nix_config()
-        system = config["system"]
+        system = self.machine_system(machine_name)
         return f'clanInternals.machines."{system}"."{machine_name}".{selector}'
 
     def select_machine(self, machine_name: str, selector: str) -> Any:

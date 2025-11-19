@@ -138,24 +138,25 @@ class Generator:
     def get_machine_selectors(
         cls: type["Generator"],
         machine_names: Iterable[str],
+        flake: "Flake",
     ) -> list[str]:
         """Get all selectors needed to fetch generators and files for the given machines.
 
         Args:
             machine_names: The names of the machines.
+            flake: The flake instance to query machine systems.
 
         Returns:
             list[str]: A list of selectors to fetch all generators and files for the machines.
 
         """
-        config = nix_config()
-        system = config["system"]
-
         generators_selector = "config.clan.core.vars.generators.*.{share,dependencies,migrateFact,prompts,validationHash}"
         files_selector = "config.clan.core.vars.generators.*.files.*.{secret,deploy,owner,group,mode,neededFor}"
 
         all_selectors = []
         for machine_name in machine_names:
+            # Get each machine's target system, not current host system
+            system = flake.machine_system(machine_name)
             all_selectors += [
                 f'clanInternals.machines."{system}"."{machine_name}".{generators_selector}',
                 f'clanInternals.machines."{system}"."{machine_name}".{files_selector}',
@@ -184,7 +185,7 @@ class Generator:
         """
         generators_selector = "config.clan.core.vars.generators.*.{share,dependencies,migrateFact,prompts,validationHash}"
         files_selector = "config.clan.core.vars.generators.*.files.*.{secret,deploy,owner,group,mode,neededFor}"
-        flake.precache(cls.get_machine_selectors(machine_names))
+        flake.precache(cls.get_machine_selectors(machine_names, flake))
 
         generators: list[Generator] = []
         shared_generators_raw: dict[
