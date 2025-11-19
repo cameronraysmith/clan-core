@@ -1181,29 +1181,31 @@ class Flake:
 
         return system
 
-    def machine_selector(self, machine_name: str, selector: str) -> str:
+    def machine_selector(self, machine_name: str, selector: str, system: str | None = None) -> str:
         """Create a selector for a specific machine.
 
         Args:
             machine_name: The name of the machine
             selector: The attribute selector string relative to the machine config
+            system: Optional system override (e.g., for vars generation on build host)
         Returns:
             The full selector string for the machine
 
         """
-        system = self.machine_system(machine_name)
+        if system is None:
+            system = self.machine_system(machine_name)
         return f'clanInternals.machines."{system}"."{machine_name}".{selector}'
 
-    def select_machine(self, machine_name: str, selector: str) -> Any:
+    def select_machine(self, machine_name: str, selector: str, system: str | None = None) -> Any:
         """Select a nix attribute for a specific machine.
 
         Args:
             machine_name: The name of the machine
             selector: The attribute selector string relative to the machine config
-            apply: Optional function to apply to the result
+            system: Optional system override (e.g., for vars generation on build host)
 
         """
-        return self.select(self.machine_selector(machine_name, selector))
+        return self.select(self.machine_selector(machine_name, selector, system))
 
     def list_machines(
         self,
