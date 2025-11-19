@@ -43,7 +43,7 @@ def get_generators(
     flake = machines[0].flake
     flake.precache(
         InventoryStore.default_selectors()
-        + Generator.get_machine_selectors(m.name for m in machines)
+        + Generator.get_machine_selectors((m.name for m in machines), flake)
     )
     all_machines = flake.list_machines().keys()
     requested_machines = [machine.name for machine in machines]
