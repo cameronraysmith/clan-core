@@ -144,7 +144,7 @@ class Generator:
 
         Args:
             machine_names: The names of the machines.
-            flake: The flake instance to query machine systems.
+            flake: The flake instance (unused, kept for API compatibility).
 
         Returns:
             list[str]: A list of selectors to fetch all generators and files for the machines.
@@ -153,10 +153,15 @@ class Generator:
         generators_selector = "config.clan.core.vars.generators.*.{share,dependencies,migrateFact,prompts,validationHash}"
         files_selector = "config.clan.core.vars.generators.*.files.*.{secret,deploy,owner,group,mode,neededFor}"
 
+        # Vars generation uses BUILD HOST system, not target machine system
+        # Generator scripts execute on the host running `clan vars generate`,
+        # so they must be built for the host's architecture (e.g., aarch64-darwin),
+        # even when generating vars for remote machines (e.g., x86_64-linux).
+        config = nix_config()
+        system = config["system"]
+
         all_selectors = []
         for machine_name in machine_names:
-            # Get each machine's target system, not current host system
-            system = flake.machine_system(machine_name)
             all_selectors += [
                 f'clanInternals.machines."{system}"."{machine_name}".{generators_selector}',
                 f'clanInternals.machines."{system}"."{machine_name}".{files_selector}',
