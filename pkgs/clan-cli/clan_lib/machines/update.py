@@ -229,6 +229,7 @@ def run_machine_update(
             try:
                 is_mobile = machine.select(
                     "config.system.clan.deployment.nixosMobileWorkaround",
+                    system=machine.flake.machine_system(machine.name),
                 )
             except ClanError:
                 is_mobile = False
