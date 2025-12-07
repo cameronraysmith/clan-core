@@ -10,6 +10,8 @@ from clan_lib.flake.flake import (
     parse_selector,
     selectors_as_dict,
 )
+from clan_lib.machines.machines import Machine
+from clan_lib.nix import nix_config
 
 log = logging.getLogger(__name__)
 
@@ -218,3 +220,39 @@ def test_conditional_all_selector(flake: ClanFlake) -> None:
     assert res1["clan-core"].get("clan") is not None
 
     flake2.invalidate_cache()
+
+
+@pytest.mark.with_core
+def test_machine_system_resolves_cross_platform_target(
+    monkeypatch: pytest.MonkeyPatch,
+    flake_with_sops: ClanFlake,
+) -> None:
+    """Test that machine_system() returns the target's architecture, not the build host's."""
+    flake = flake_with_sops
+    local_system = nix_config()["system"]
+    target_system = (
+        "aarch64-linux" if local_system == "x86_64-linux" else "x86_64-linux"
+    )
+    config = flake.machines["cross_target_machine"] = create_test_machine_config(
+        target_system
+    )
+
+    # Create a simple generator to have valid machine config
+    my_generator = config["clan"]["core"]["vars"]["generators"]["my_generator"]
+    my_generator["files"]["my_value"]["secret"] = False
+    my_generator["script"] = 'echo "cross-platform" > "$out"/my_value'
+
+    flake.refresh()
+    monkeypatch.chdir(flake.path)
+
+    flake_obj = Flake(str(flake.path))
+    resolved_system = flake_obj.machine_system("cross_target_machine")
+    assert resolved_system == target_system
+    assert resolved_system != local_system
+
+    machine = Machine(name="cross_target_machine", flake=flake_obj)
+    state_version_enabled = machine.select(
+        "config.clan.core.settings.state-version.enable",
+        system=flake_obj.machine_system("cross_target_machine"),
+    )
+    assert state_version_enabled is False
