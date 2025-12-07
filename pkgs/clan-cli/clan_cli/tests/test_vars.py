@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 
 import pytest
+from clan_cli.secrets.machines import has_machine
 from clan_cli.tests.age_keys import SopsSetup
 from clan_cli.tests.fixtures_flakes import ClanFlake, create_test_machine_config
 from clan_cli.tests.helpers import cli
@@ -729,6 +730,36 @@ def test_generate_secret_for_multiple_machines(
 
 
 @pytest.mark.with_core
+def test_generator_build_system_is_host_not_target(
+    monkeypatch: pytest.MonkeyPatch,
+    flake_with_sops: ClanFlake,
+) -> None:
+    """Test that Generator._build_system uses the build host's architecture."""
+    flake = flake_with_sops
+    local_system = nix_config()["system"]
+    target_system = (
+        "aarch64-linux" if local_system == "x86_64-linux" else "x86_64-linux"
+    )
+    config = flake.machines["cross_target_machine"] = create_test_machine_config(
+        target_system
+    )
+    my_generator = config["clan"]["core"]["vars"]["generators"]["my_generator"]
+    my_generator["files"]["my_value"]["secret"] = False
+    my_generator["script"] = 'echo "cross-platform test" > "$out"/my_value'
+
+    flake.refresh()
+    monkeypatch.chdir(flake.path)
+
+    flake_obj = Flake(str(flake.path))
+    generators = Generator.get_machine_generators(["cross_target_machine"], flake_obj)
+
+    assert len(generators) == 1
+    gen = generators[0]
+    assert gen._build_system == local_system
+    assert gen._build_system != target_system
+
+
+@pytest.mark.with_core
 def test_prompt(
     monkeypatch: pytest.MonkeyPatch,
     flake_with_sops: ClanFlake,
@@ -1407,21 +1438,27 @@ def test_generate_secret_var_password_store_minimal_select_calls(
     )
 
     # The optimization should result in minimal cache misses.
-    # We expect exactly 3 cache misses:
+    # We expect exactly 5 cache misses:
     # 1. One select to get the list of generators for the machine
     # 2. One batched evaluation for getting generator configuration (script, files, etc.)
-    # 3. One select for password_store.passCommand during init_pass_command
+    # 3. One select for machineClass (to determine if nixos or darwin)
+    # 4. One select for hostPlatform.system (to get target machine system)
+    # 5. One select for password_store.passCommand with target system
+    #
+    # Note: Cache misses 3-5 are required for cross-platform correctness when
+    # deploying to machines with different architectures than the build host.
 
     # Print stack traces if we have more cache misses than expected
-    if flake_obj._cache_misses > 3:
+    if flake_obj._cache_misses > 5:
         flake_obj.print_cache_miss_analysis(
             title="Cache miss analysis for password_store backend"
         )
 
-    assert flake_obj._cache_misses == 3, (
-        f"Expected exactly 3 cache misses for password_store backend initialization, "
-        f"got {flake_obj._cache_misses}. The passCommand optimization should minimize select calls "
-        f"(before: 4-5 selects with passPackage.outPath + meta.mainProgram, after: 3 with passCommand only)."
+    assert flake_obj._cache_misses == 5, (
+        f"Expected exactly 5 cache misses for password_store backend initialization, "
+        f"got {flake_obj._cache_misses}. The passCommand query now uses target system for "
+        f"cross-platform correctness, requiring machine_system() lookup (3 cache misses for "
+        f"machineClass + hostPlatform.system + passCommand)."
     )
 
     # Verify the secret was actually generated
