@@ -79,6 +79,7 @@ class SecretStore(StoreBase):
             add_groups=self.flake.select_machine(
                 machine,
                 "config.clan.core.sops.defaultGroups",
+                system=self.flake.machine_system(machine),
             ),
         )
         add_machine(self.flake.path, machine, pub_key, False, age_plugins)
@@ -194,6 +195,7 @@ class SecretStore(StoreBase):
             add_groups=self.flake.select_machine(
                 machine,
                 "config.clan.core.sops.defaultGroups",
+                system=self.flake.machine_system(machine),
             ),
             git_commit=False,
         )
@@ -269,6 +271,7 @@ class SecretStore(StoreBase):
         return self.flake.select_machine(
             machine,
             "config.clan.core.vars.sops.secretUploadDirectory",
+            system=self.flake.machine_system(machine),
         )
 
     @override
@@ -309,6 +312,7 @@ class SecretStore(StoreBase):
         for group in self.flake.select_machine(
             machine,
             "config.clan.core.sops.defaultGroups",
+            system=self.flake.machine_system(machine),
         ):
             keys.update(
                 collect_keys_for_type(
@@ -390,6 +394,7 @@ class SecretStore(StoreBase):
                 for group in self.flake.select_machine(
                     machine,
                     "config.clan.core.sops.defaultGroups",
+                    system=self.flake.machine_system(machine),
                 ):
                     allow_member(
                         groups_folder(secret_path),
