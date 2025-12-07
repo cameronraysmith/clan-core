@@ -799,6 +799,7 @@ class Flake:
     _path: Path | None = field(init=False, default=None)
     _is_local: bool | None = field(init=False, default=None)
     _cache_miss_stack_traces: list[str] = field(init=False, default_factory=list)
+    _machine_systems: dict[str, str] = field(init=False, default_factory=dict)
 
     @classmethod
     def from_json(
@@ -927,6 +928,8 @@ class Flake:
         self._cache = FlakeCache()
         # Reset cache miss tracking when invalidating cache
         self._cache_miss_stack_traces.clear()
+        # Clear machine system cache
+        self._machine_systems.clear()
         if self.hash is None:
             msg = "Hash cannot be None"
             raise ClanError(msg)
@@ -1144,6 +1147,53 @@ class Flake:
                 selectors=[selector],
                 description=f"Attribute '{e.args[0]}' not found in flake",
             ) from e
+
+    def machine_system(self, machine_name: str) -> str:
+        """Get the target system for a specific machine.
+
+        Queries the machine's actual system from nixosConfigurations or
+        darwinConfigurations based on its machineClass in the inventory.
+        Results are cached per machine to avoid redundant nix evaluations.
+
+        Args:
+            machine_name: The name of the machine
+
+        Returns:
+            The target system (e.g., "x86_64-linux", "aarch64-darwin")
+
+        """
+        # Check cache first
+        if machine_name in self._machine_systems:
+            return self._machine_systems[machine_name]
+
+        # Determine machine's target system from its configuration
+        try:
+            # Try to get machineClass from inventory
+            machine_class = self.select(
+                f'clanInternals.inventoryClass.inventory.machines."{machine_name}".machineClass'
+            )
+        except ClanSelectError:
+            # Fallback: assume nixos if not in inventory
+            machine_class = "nixos"
+
+        # Query the machine's actual target system from its configuration
+        try:
+            if machine_class == "darwin":
+                system = self.select(
+                    f'darwinConfigurations."{machine_name}".pkgs.hostPlatform.system'
+                )
+            else:  # nixos
+                system = self.select(
+                    f'nixosConfigurations."{machine_name}".pkgs.hostPlatform.system'
+                )
+        except ClanSelectError:
+            # Ultimate fallback: use current host system (old behavior)
+            config = nix_config()
+            system = config["system"]
+
+        # Cache the result
+        self._machine_systems[machine_name] = system
+        return system
 
     def machine_selector(self, machine_name: str, selector: str) -> str:
         """Create a selector for a specific machine.
