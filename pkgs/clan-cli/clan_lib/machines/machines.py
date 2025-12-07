@@ -120,11 +120,16 @@ class Machine:
     def select(
         self,
         attr: str,
+        system: str | None = None,
     ) -> Any:
         """Select a nix attribute of the machine
-        @attr: the attribute to get
+
+        Args:
+            attr: the attribute to get
+            system: Optional system override (passed to flake.select_machine)
+
         """
-        return self.flake.select_machine(self.name, attr)
+        return self.flake.select_machine(self.name, attr, system)
 
 
 @dataclass(frozen=True)

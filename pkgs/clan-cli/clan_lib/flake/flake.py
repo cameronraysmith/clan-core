@@ -1195,30 +1195,39 @@ class Flake:
         self._machine_systems[machine_name] = system
         return system
 
-    def machine_selector(self, machine_name: str, selector: str) -> str:
+    def machine_selector(
+        self, machine_name: str, selector: str, system: str | None = None
+    ) -> str:
         """Create a selector for a specific machine.
 
         Args:
             machine_name: The name of the machine
             selector: The attribute selector string relative to the machine config
+            system: Optional system override. If None, uses current host system.
+                    For deployment operations that need target-specific derivations,
+                    pass machine_system(machine_name) explicitly.
+
         Returns:
             The full selector string for the machine
 
         """
-        config = nix_config()
-        system = config["system"]
+        if system is None:
+            config = nix_config()
+            system = config["system"]
         return f'clanInternals.machines."{system}"."{machine_name}".{selector}'
 
-    def select_machine(self, machine_name: str, selector: str) -> Any:
+    def select_machine(
+        self, machine_name: str, selector: str, system: str | None = None
+    ) -> Any:
         """Select a nix attribute for a specific machine.
 
         Args:
             machine_name: The name of the machine
             selector: The attribute selector string relative to the machine config
-            apply: Optional function to apply to the result
+            system: Optional system override (passed to machine_selector)
 
         """
-        return self.select(self.machine_selector(machine_name, selector))
+        return self.select(self.machine_selector(machine_name, selector, system))
 
     def list_machines(
         self,

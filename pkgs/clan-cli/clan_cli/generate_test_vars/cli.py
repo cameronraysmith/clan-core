@@ -75,18 +75,22 @@ class TestFlake(Flake):
     def path(self) -> Path:
         return self.test_dir
 
-    def machine_selector(self, machine_name: str, selector: str) -> str:
+    def machine_selector(
+        self, machine_name: str, selector: str, system: str | None = None
+    ) -> str:
         """Create a selector for a specific machine.
 
         Args:
             machine_name: The name of the machine
             selector: The attribute selector string relative to the machine config
+            system: Optional system override for cross-platform scenarios
         Returns:
             The full selector string for the machine
 
         """
-        config = nix_config()
-        system = config["system"]
+        if system is None:
+            config = nix_config()
+            system = config["system"]
         test_system = system
         if system.endswith("-darwin"):
             test_system = system.rstrip("darwin") + "linux"
@@ -135,9 +139,14 @@ class TestMachine(Machine):
     def flake_dir(self) -> Path:
         return self.test_dir
 
-    def select(self, attr: str) -> Any:
-        """Build the machine and return the path to the result
-        accepts a secret store and a public store
+    def select(self, attr: str, system: str | None = None) -> Any:
+        """Build the machine and return the path to the result.
+
+        Accepts a secret store and a public store.
+
+        The system parameter exists for API compatibility with Machine.select()
+        but is not used. TestMachine determines the system internally based on
+        whether the build host is darwin (remapping to linux for test execution).
         """
         config = nix_config()
         system = config["system"]
