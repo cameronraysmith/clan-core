@@ -98,6 +98,9 @@ class Generator:
     _flake: "Flake | None" = None
     _public_store: "StoreBase | None" = None
     _secret_store: "StoreBase | None" = None
+    _build_system: str | None = (
+        None  # System to build generator scripts for (host architecture)
+    )
 
     @staticmethod
     def validate_dependencies(
@@ -220,6 +223,13 @@ class Generator:
         files_selector = "config.clan.core.vars.generators.*.files.*.{secret,deploy,owner,group,mode,neededFor}"
         flake.precache(cls.get_machine_selectors(machine_names))
 
+        # Vars generation uses BUILD HOST system for generator scripts.
+        # Generator scripts execute on the machine running `clan vars generate`,
+        # so they must be built for the host's architecture (e.g., aarch64-darwin),
+        # even when generating vars for remote machines (e.g., x86_64-linux).
+        config = nix_config()
+        build_system = config["system"]
+
         generators: list[Generator] = []
         shared_generators_raw: dict[
             str, tuple[str, dict, dict]
@@ -227,9 +237,11 @@ class Generator:
 
         for machine_name in machine_names:
             # Get all generator metadata in one select (safe fields only)
+            # Use build_system to fetch generators built for the host architecture
             generators_data = flake.select_machine(
                 machine_name,
                 generators_selector,
+                system=build_system,
             )
             if not generators_data:
                 continue
@@ -238,6 +250,7 @@ class Generator:
             files_data = flake.select_machine(
                 machine_name,
                 files_selector,
+                system=build_system,
             )
 
             machine = Machine(name=machine_name, flake=flake)
@@ -340,6 +353,7 @@ class Generator:
                     _flake=flake,
                     _public_store=pub_store,
                     _secret_store=sec_store,
+                    _build_system=build_system,
                 )
 
                 # link generator to its files
@@ -393,7 +407,9 @@ class Generator:
             msg = "Flake cannot be None"
             raise ClanError(msg)
         return self._flake.machine_selector(
-            machine_name, f'config.clan.core.vars.generators."{self.name}".finalScript'
+            machine_name,
+            f'config.clan.core.vars.generators."{self.name}".finalScript',
+            system=self._build_system,
         )
 
     def final_script(self, machine: "Machine") -> Path:
