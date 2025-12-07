@@ -1726,3 +1726,74 @@ def test_dynamic_invalidation(
         generators_1["dependent_generator"]["files"]["my_value"]["value"]
         != generators_2["dependent_generator"]["files"]["my_value"]["value"]
     )
+
+
+@pytest.mark.with_core
+def test_sops_cross_platform_ensure_machine_key(
+    monkeypatch: pytest.MonkeyPatch,
+    flake_with_sops: ClanFlake,
+    sops_setup: SopsSetup,
+) -> None:
+    """Test that ensure_machine_key() queries defaultGroups using the target system."""
+    flake = flake_with_sops
+    local_system = nix_config()["system"]
+    target_system = (
+        "aarch64-linux" if local_system == "x86_64-linux" else "x86_64-linux"
+    )
+    config = flake.machines["cross_target_machine"] = create_test_machine_config(
+        target_system
+    )
+    config["clan"]["core"]["sops"]["defaultGroups"] = ["my_cross_group"]
+    my_generator = config["clan"]["core"]["vars"]["generators"]["my_generator"]
+    my_generator["files"]["my_secret"]["secret"] = True
+    my_generator["script"] = 'echo hello > "$out"/my_secret'
+
+    flake.refresh()
+    monkeypatch.chdir(flake.path)
+    cli.run(["secrets", "groups", "add-user", "my_cross_group", sops_setup.user])
+
+    flake_obj = Flake(str(flake.path))
+    sops_store = sops.SecretStore(flake=flake_obj)
+    sops_store.ensure_machine_key("cross_target_machine")
+
+    assert has_machine(flake.path, "cross_target_machine")
+    assert flake_obj.machine_system("cross_target_machine") == target_system
+
+
+@pytest.mark.with_core
+def test_sops_collect_keys_for_secret_cross_platform(
+    monkeypatch: pytest.MonkeyPatch,
+    flake_with_sops: ClanFlake,
+    sops_setup: SopsSetup,
+) -> None:
+    """Test that collect_keys_for_secret() queries defaultGroups using the target system."""
+    flake = flake_with_sops
+    local_system = nix_config()["system"]
+    target_system = (
+        "aarch64-linux" if local_system == "x86_64-linux" else "x86_64-linux"
+    )
+    config = flake.machines["cross_target_machine"] = create_test_machine_config(
+        target_system
+    )
+    config["clan"]["core"]["sops"]["defaultGroups"] = ["cross_platform_group"]
+    my_generator = config["clan"]["core"]["vars"]["generators"]["my_generator"]
+    my_generator["files"]["my_secret"]["secret"] = True
+    my_generator["script"] = 'echo hello > "$out"/my_secret'
+
+    flake.refresh()
+    monkeypatch.chdir(flake.path)
+    cli.run(["secrets", "groups", "add-user", "cross_platform_group", sops_setup.user])
+    cli.run(["vars", "generate", "--flake", str(flake.path), "cross_target_machine"])
+
+    flake_obj = Flake(str(flake.path))
+    sops_store = sops.SecretStore(flake=flake_obj)
+    generator = Generator(
+        "my_generator",
+        machines=["cross_target_machine"],
+        _flake=flake_obj,
+    )
+    secret_path = sops_store.secret_path(generator, "my_secret")
+    keys = sops_store.collect_keys_for_secret("cross_target_machine", secret_path)
+
+    assert len(keys) > 0
+    assert flake_obj.machine_system("cross_target_machine") == target_system
