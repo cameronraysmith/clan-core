@@ -1797,3 +1797,75 @@ def test_sops_collect_keys_for_secret_cross_platform(
 
     assert len(keys) > 0
     assert flake_obj.machine_system("cross_target_machine") == target_system
+
+
+@pytest.mark.with_core
+def test_password_store_init_pass_command_cross_platform(
+    monkeypatch: pytest.MonkeyPatch,
+    flake: ClanFlake,
+    age_keys: list,
+) -> None:
+    """Test that init_pass_command() queries passCommand using the target system."""
+    local_system = nix_config()["system"]
+    target_system = (
+        "aarch64-linux" if local_system == "x86_64-linux" else "x86_64-linux"
+    )
+    config = flake.machines["cross_target_machine"] = create_test_machine_config(
+        target_system
+    )
+    clan_vars = config["clan"]["core"]["vars"]
+    clan_vars["settings"]["secretStore"] = "password-store"
+    config["clan"]["core"]["vars"]["password-store"]["passCommand"] = "passage"
+    my_generator = clan_vars["generators"]["my_generator"]
+    my_generator["files"]["my_secret"]["secret"] = True
+    my_generator["script"] = 'echo "cross-platform-secret" > "$out"/my_secret'
+
+    flake.refresh()
+    monkeypatch.chdir(flake.path)
+
+    age_key = age_keys[0]
+    age_key_dir = flake.path / ".age"
+    age_key_dir.mkdir()
+    age_key_file = age_key_dir / "key.txt"
+    age_key_file.write_text(age_key.privkey)
+
+    password_store_dir = flake.path / "pass"
+    password_store_dir.mkdir(parents=True)
+    (password_store_dir / ".age-recipients").write_text(f"{age_key.pubkey}\n")
+    monkeypatch.setenv("PASSAGE_DIR", str(password_store_dir))
+    monkeypatch.setenv("PASSAGE_IDENTITIES_FILE", str(age_key_file))
+
+    subprocess.run(["git", "init"], cwd=password_store_dir, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=password_store_dir,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        cwd=password_store_dir,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "add", ".age-recipients"], cwd=password_store_dir, check=True
+    )
+    subprocess.run(["git", "commit", "-m", "init"], cwd=password_store_dir, check=True)
+
+    invalidate_flake_cache(flake.path)
+    flake_obj = Flake(str(flake.path))
+    machine = Machine(name="cross_target_machine", flake=flake_obj)
+    assert flake_obj.machine_system("cross_target_machine") == target_system
+
+    run_generators(machines=[machine], generators=None)
+
+    store = password_store.SecretStore(flake=flake_obj)
+    store.init_pass_command(machine="cross_target_machine")
+    generator = Generator(
+        "my_generator",
+        share=False,
+        files=[],
+        machines=["cross_target_machine"],
+        _flake=flake_obj,
+    )
+    assert store.exists(generator, "my_secret")
+    assert store.get(generator, "my_secret").decode() == "cross-platform-secret\n"
