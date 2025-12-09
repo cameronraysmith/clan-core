@@ -1759,6 +1759,17 @@ def test_sops_cross_platform_ensure_machine_key(
     assert has_machine(flake.path, "cross_target_machine")
     assert flake_obj.machine_system("cross_target_machine") == target_system
 
+    # Verify that querying via target system path returns correct hostPlatform
+    queried_system = flake_obj.select_machine(
+        "cross_target_machine",
+        "config.nixpkgs.hostPlatform.system",
+        system=target_system,
+    )
+    assert queried_system == target_system, (
+        f"Expected hostPlatform.system '{target_system}' when querying via target system path, "
+        f"got '{queried_system}'"
+    )
+
 
 @pytest.mark.with_core
 def test_sops_collect_keys_for_secret_cross_platform(
@@ -1797,6 +1808,17 @@ def test_sops_collect_keys_for_secret_cross_platform(
 
     assert len(keys) > 0
     assert flake_obj.machine_system("cross_target_machine") == target_system
+
+    # Verify that querying via target system path returns correct hostPlatform
+    queried_system = flake_obj.select_machine(
+        "cross_target_machine",
+        "config.nixpkgs.hostPlatform.system",
+        system=target_system,
+    )
+    assert queried_system == target_system, (
+        f"Expected hostPlatform.system '{target_system}' when querying via target system path, "
+        f"got '{queried_system}'"
+    )
 
 
 @pytest.mark.with_core
@@ -1869,3 +1891,14 @@ def test_password_store_init_pass_command_cross_platform(
     )
     assert store.exists(generator, "my_secret")
     assert store.get(generator, "my_secret").decode() == "cross-platform-secret\n"
+
+    # Verify that querying via target system path returns correct hostPlatform
+    queried_system = flake_obj.select_machine(
+        "cross_target_machine",
+        "config.nixpkgs.hostPlatform.system",
+        system=target_system,
+    )
+    assert queried_system == target_system, (
+        f"Expected hostPlatform.system '{target_system}' when querying via target system path, "
+        f"got '{queried_system}'"
+    )
