@@ -101,8 +101,9 @@ def run_machine_install(opts: InstallOptions, target_host: Remote) -> None:
     ):
         base_directory = Path(_base_directory).resolve()
         activation_secrets = base_directory / "activation_secrets"
-        # Vars use /run/secrets as the standard directory for secret deployment
-        upload_dir = activation_secrets / "secrets-upload"
+        # Build directory structure matching target paths for nixos-anywhere --extra-files
+        secrets_target_dir = machine.secret_vars_store.get_upload_directory(machine.name)
+        upload_dir = activation_secrets / secrets_target_dir.lstrip("/")
         upload_dir.mkdir(parents=True)
 
         # Notify the UI about what we are doing
