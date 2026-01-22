@@ -119,11 +119,17 @@ class Machine:
     def select(
         self,
         attr: str,
+        system: str | None = None,
     ) -> Any:
-        """Select a nix attribute of the machine
-        @attr: the attribute to get
+        """Select a nix attribute of the machine.
+
+        Args:
+            attr: the attribute to get
+            system: Target system architecture. If None, uses machine's target system.
+
         """
-        return self.flake.select_machine(self.name, attr)
+        target_system = system if system is not None else self.system
+        return self.flake.select_machine(self.name, attr, system=target_system)
 
 
 @dataclass(frozen=True)
