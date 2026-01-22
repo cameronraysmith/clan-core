@@ -14,7 +14,7 @@ from clan_lib import bwrap
 from clan_lib.cmd import RunOpts, run
 from clan_lib.errors import ClanError
 from clan_lib.git import commit_files
-from clan_lib.nix import nix_config, nix_test_store
+from clan_lib.nix import nix_test_store
 
 from .prompt import Prompt, ask
 from .var import Var
@@ -170,33 +170,46 @@ class Generator:
     def get_machine_selectors(
         cls: type["Generator"],
         machine_names: Iterable[str],
+        flake: "Flake",
     ) -> list[str]:
         """Get all selectors needed to fetch generators and files for the given machines.
 
         Args:
             machine_names: The names of the machines.
+            flake: The flake to query machine target systems from.
 
         Returns:
             list[str]: A list of selectors to fetch all generators and files for the machines.
 
         """
-        config = nix_config()
-        system = config["system"]
-
         generators_selector = "config.clan.core.vars.generators.*.{share,dependencies,prompts,validationHash}"
         files_selector = "config.clan.core.vars.generators.*.files.*.{secret,deploy,owner,group,mode,neededFor}"
 
-        return [
-            "clanInternals.?secrets.?age.?plugins",
-            f"clanInternals.machines.{system}.{{{','.join(machine_names)}}}.{generators_selector}",
-            f"clanInternals.machines.{system}.{{{','.join(machine_names)}}}.{files_selector}",
-            f"clanInternals.machines.{system}.{{{','.join(machine_names)}}}.config.clan.core.?sops.?defaultGroups",
-            f"clanInternals.machines.{system}.{{{','.join(machine_names)}}}.config.clan.core.vars.settings.publicModule",
-            f"clanInternals.machines.{system}.{{{','.join(machine_names)}}}.config.clan.core.vars.settings.secretModule",
-            f"clanInternals.machines.{system}.{{{','.join(machine_names)}}}.config.clan.core.vars.?sops.?secretUploadDirectory",
-            f"clanInternals.machines.{system}.{{{','.join(machine_names)}}}.config.clan.core.vars.?password-store.?passCommand",
-            f"clanInternals.machines.{system}.{{{','.join(machine_names)}}}.config.clan.core.vars.?password-store.?secretLocation",
-        ]
+        selectors = ["clanInternals.?secrets.?age.?plugins"]
+
+        # Group machines by target system for efficient selector batching
+        machines_by_system: dict[str, list[str]] = {}
+        for machine_name in machine_names:
+            system = flake.machine_system(machine_name)
+            if system not in machines_by_system:
+                machines_by_system[system] = []
+            machines_by_system[system].append(machine_name)
+
+        # Build selectors for each system group
+        for system, machines in machines_by_system.items():
+            machine_set = ",".join(machines)
+            selectors.extend([
+                f"clanInternals.machines.{system}.{{{machine_set}}}.{generators_selector}",
+                f"clanInternals.machines.{system}.{{{machine_set}}}.{files_selector}",
+                f"clanInternals.machines.{system}.{{{machine_set}}}.config.clan.core.?sops.?defaultGroups",
+                f"clanInternals.machines.{system}.{{{machine_set}}}.config.clan.core.vars.settings.publicModule",
+                f"clanInternals.machines.{system}.{{{machine_set}}}.config.clan.core.vars.settings.secretModule",
+                f"clanInternals.machines.{system}.{{{machine_set}}}.config.clan.core.vars.?sops.?secretUploadDirectory",
+                f"clanInternals.machines.{system}.{{{machine_set}}}.config.clan.core.vars.?password-store.?passCommand",
+                f"clanInternals.machines.{system}.{{{machine_set}}}.config.clan.core.vars.?password-store.?secretLocation",
+            ])
+
+        return selectors
 
     @classmethod
     def _find_generator_differences(
@@ -268,7 +281,7 @@ class Generator:
         """
         generators_selector = "config.clan.core.vars.generators.*.{share,dependencies,prompts,validationHash}"
         files_selector = "config.clan.core.vars.generators.*.files.*.{secret,deploy,owner,group,mode,neededFor}"
-        flake.precache(cls.get_machine_selectors(machine_names))
+        flake.precache(cls.get_machine_selectors(machine_names, flake))
 
         generators: list[Generator] = []
         shared_generators_raw: dict[
@@ -276,10 +289,14 @@ class Generator:
         ] = {}  # name -> (machine_name, gen_data, files_data)
 
         for machine_name in machine_names:
+            # Use target machine's system for config queries
+            target_system = flake.machine_system(machine_name)
+
             # Get all generator metadata in one select (safe fields only)
             generators_data = flake.select_machine(
                 machine_name,
                 generators_selector,
+                system=target_system,
             )
             if not generators_data:
                 continue
@@ -288,6 +305,7 @@ class Generator:
             files_data = flake.select_machine(
                 machine_name,
                 files_selector,
+                system=target_system,
             )
 
             machine = Machine(name=machine_name, flake=flake)
