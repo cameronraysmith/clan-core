@@ -177,7 +177,7 @@ def update_command(args: argparse.Namespace) -> None:
 
         flake.precache(
             [
-                *Generator.get_machine_selectors(machine_names),
+                *Generator.get_machine_selectors(machine_names, flake),
                 *deployment_selectors,
             ]
         )
