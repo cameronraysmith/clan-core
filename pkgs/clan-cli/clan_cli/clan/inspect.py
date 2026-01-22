@@ -12,7 +12,6 @@ from clan_lib.machines.machines import Machine
 from clan_lib.nix import (
     nix_add_to_gcroots,
     nix_build,
-    nix_config,
     nix_eval,
     nix_metadata,
 )
@@ -54,16 +53,18 @@ def run_cmd(cmd: list[str]) -> str:
 
 
 def inspect_flake(flake_url: str | Path, machine_name: str) -> FlakeConfig:
-    config = nix_config()
-    system = config["system"]
+    flake = Flake(str(flake_url))
 
     # Check if the machine exists
-    machines = list_machines(Flake(str(flake_url)))
+    machines = list_machines(flake)
     if machine_name not in machines:
         msg = f"Machine {machine_name} not found in {flake_url}. Available machines: {', '.join(machines)}"
         raise ClanError(msg)
 
-    machine = Machine(machine_name, Flake(str(flake_url)))
+    # Use target machine's system for config queries (cross-platform support)
+    system = flake.machine_system(machine_name)
+
+    machine = Machine(machine_name, flake)
     vm = inspect_vm(machine)
 
     # Make symlink to gcroots from vm.machine_icon
