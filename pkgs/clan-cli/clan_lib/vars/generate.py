@@ -7,6 +7,8 @@ from clan_lib.api import API
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from clan_lib.flake import Flake
 from clan_lib.errors import ClanError
 from clan_lib.machines.machines import Machine
 from clan_lib.persist.inventory_store import InventoryStore
@@ -21,7 +23,9 @@ log = logging.getLogger(__name__)
 debug_condition = False
 
 
-def get_generators_precache_selectors(machine_names: list[str]) -> list[str]:
+def get_generators_precache_selectors(
+    machine_names: list[str], flake: "Flake"
+) -> list[str]:
     """Get all selectors needed for get_generators and run_generators.
 
     This function returns all selectors that should be precached before calling
@@ -30,13 +34,14 @@ def get_generators_precache_selectors(machine_names: list[str]) -> list[str]:
 
     Args:
         machine_names: The names of machines to get selectors for.
+        flake: The flake to query machine target systems from.
 
     Returns:
         List of selectors to precache.
 
     """
     return InventoryStore.default_selectors() + Generator.get_machine_selectors(
-        machine_names
+        machine_names, flake
     )
 
 
@@ -64,7 +69,7 @@ def get_generators(
         raise ClanError(msg)
     flake = machines[0].flake
     all_machines = flake.list_machines().keys()
-    flake.precache(get_generators_precache_selectors(list(all_machines)))
+    flake.precache(get_generators_precache_selectors(list(all_machines), flake))
     requested_machines = [machine.name for machine in machines]
 
     # Cache decrypted secrets to avoid repeated decryption for shared generators
