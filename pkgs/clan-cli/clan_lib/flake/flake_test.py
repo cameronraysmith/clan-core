@@ -220,3 +220,70 @@ def test_conditional_all_selector(flake: ClanFlake) -> None:
     assert res1["clan-core"].get("clan") is not None
 
     flake2.invalidate_cache()
+
+
+@pytest.mark.with_core
+def test_machine_system_returns_target_architecture(
+    monkeypatch: pytest.MonkeyPatch,
+    flake: ClanFlake,
+) -> None:
+    """Verify machine_system() returns the target machine's architecture, not the build host's."""
+    from clan_lib.nix import nix_config
+
+    local_system = nix_config()["system"]
+    # Create machine with opposite architecture to verify we get target, not build-host
+    if "darwin" in local_system:
+        target_system = "x86_64-linux"
+    else:
+        target_system = "aarch64-darwin"
+
+    flake.machines["cross_target"] = create_test_machine_config(target_system)
+    flake.refresh()
+    monkeypatch.chdir(flake.path)
+
+    flake_obj = Flake(str(flake.path))
+
+    resolved = flake_obj.machine_system("cross_target")
+    assert resolved == target_system
+    assert resolved != local_system
+
+
+@pytest.mark.with_core
+def test_select_machine_uses_provided_system(
+    monkeypatch: pytest.MonkeyPatch,
+    flake: ClanFlake,
+) -> None:
+    """Verify select_machine() and machine_selector() respect the system parameter."""
+    from clan_lib.nix import nix_config
+
+    local_system = nix_config()["system"]
+    if "darwin" in local_system:
+        target_system = "x86_64-linux"
+    else:
+        target_system = "aarch64-darwin"
+
+    flake.machines["cross_target"] = create_test_machine_config(target_system)
+    flake.refresh()
+    monkeypatch.chdir(flake.path)
+
+    flake_obj = Flake(str(flake.path))
+
+    # Verify machine_selector builds paths using the provided system parameter
+    selector_with_target = flake_obj.machine_selector(
+        "cross_target", "config.clan.core.machineName", system=target_system
+    )
+    selector_with_local = flake_obj.machine_selector(
+        "cross_target", "config.clan.core.machineName", system=local_system
+    )
+
+    # The selectors should use the respective system in the path
+    assert f'"{target_system}"' in selector_with_target
+    assert f'"{local_system}"' in selector_with_local
+    assert selector_with_target != selector_with_local
+
+    # Verify select_machine with target system can resolve configuration
+    # This confirms the fix: using target system allows querying config attributes
+    result = flake_obj.select_machine(
+        "cross_target", "config.clan.core.machineName", system=target_system
+    )
+    assert result == "cross_target"
