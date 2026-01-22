@@ -60,6 +60,7 @@ class SecretStore(StoreBase):
         pass_cmd = self.flake.select_machine(
             machine,
             "config.clan.core.vars.password-store.passCommand",
+            system=self.flake.machine_system(machine),
         )
 
         if not self.cmd_exists(pass_cmd):
@@ -184,7 +185,7 @@ class SecretStore(StoreBase):
         remote_hash = host.run(
             [
                 "cat",
-                f"{self.flake.select_machine(machine, 'config.clan.core.vars.password-store.secretLocation')}/.pass_info",
+                f"{self.flake.select_machine(machine, 'config.clan.core.vars.password-store.secretLocation', system=self.flake.machine_system(machine))}/.pass_info",
             ],
             RunOpts(log=Log.STDERR, check=False),
         ).stdout.strip()
@@ -262,6 +263,7 @@ class SecretStore(StoreBase):
         return self.flake.select_machine(
             machine,
             "config.clan.core.vars.password-store.secretLocation",
+            system=self.flake.machine_system(machine),
         )
 
     def upload(self, machine: str, host: Host, phases: list[str]) -> None:
